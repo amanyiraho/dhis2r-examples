@@ -1,0 +1,324 @@
+---
+title: "Penta  Demo report"
+date:  "Last compiled on `r format(Sys.time(), '%d %B, %Y')`"
+format: pdf
+editor: visual
+execute: 
+  echo: false
+  warning: false
+  comment: false
+  freeze: auto
+---
+
+## Aim of Penta Demo report 
+
+This report is meant to demonstrate how routine analysis of routine immunisation data can be made more quickly, without consuming a lot of time for data managers and also gives an edge with the power of open-source technology. 
+Data managers can make appealing visualisations  if you can easily export data from dhis2 using R
+
+**This narrative can change**
+
+```{r}
+
+# install.packages("devtools")
+#devtools::install_github("amanyiraho/dhis2r")
+library(tidyverse)
+library(dhis2r)
+library(lubridate)
+library(ggrepel)
+library(ggtext)
+library(glue)
+library(MetBrewer)
+library(showtext)
+```
+
+```{r}
+
+dhis2_play_connection <- Dhis2r$new(base_url = "https://play.dhis2.org/", 
+                                    username = "admin", 
+                                    password = "district",
+                                    api_version = "2.39.0.1",
+                                    api_version_position = "before")
+
+```
+
+
+```{r}
+#(res <- dhis2_play_connection$get_metadata())
+```
+
+
+```{r}
+#(dataElements <- dhis2_play_connection$get_metadata(endpoint = "dataElements"))
+```
+
+
+```{r}
+#(indicators <- dhis2_play_connection$get_metadata(endpoint = "indicators"))
+```
+
+
+```{r}
+org_unit <- dhis2_play_connection$get_metadata(endpoint = "organisationUnits",
+                                                fields =  c("name", "id", "level"))
+```
+
+
+```{r}
+org_unit_ids <- org_unit |> 
+  filter(level %in% c(1, 2)) |> 
+  pull(id)
+```
+
+
+```{r}
+# data(relative_periods)
+# relative_periods
+```
+
+## Data visualistaion using different districts
+
+```{r}
+Penta_1_3_district <- dhis2_play_connection$get_analytics(
+                                    analytic = c("i7WSgSJpnfu", "tUIlpyeeX9N", "EdN7qlmI5FS"),
+                                    org_unit = org_unit_ids,
+                                    period = "LAST_YEAR",
+                                    output_scheme = "NAME")
+```
+
+
+```{r}
+
+
+#| column: screen
+#| out-width: 100%
+#| fig-format: svg
+tt <- Penta_1_3_district |>
+  mutate(value = as.numeric(value),
+         analytic = as.factor(analytic), 
+         org_unit = as.factor(org_unit), 
+         ) |> 
+  pivot_wider(names_from =analytic, values_from = value ) |> 
+  mutate(coverage_diff = `Penta 1 Coverage <1y` - `Penta 3 Coverage <1y`, 
+         x_pos = `Penta 1 Coverage <1y` - (coverage_diff /2) ) 
+  # mutate(org_unit = fct_reorder(org_unit, `Dropout rate Penta 1 - 3`)) |> 
+  # arrange(`Dropout rate Penta 1 - 3`)
+
+
+# add font ----------------------------------------------------------------
+font_add_google(name = "Courier Prime", family = "Courier Prime")
+
+
+font <- "Courier Prime"
+
+caption <- "Each number in a circle represents dropout rate % <br> **NOT the difference between the coverages**.<br> Data source: DHIS 2 Demo - Districts in Sierra Leone, Annual data (2022)"
+
+penta_1_colour <- "#3b7c70"
+penta_3_colour <- "#ce9742"
+# turn on showtext --------------------------------------------------------
+showtext_auto()
+showtext_opts(dpi = 320)
+
+ggplot(tt, aes(y =  org_unit )) +
+  
+  annotate(
+    "rect",
+    xmin = c(80,60,40, 20), xmax = c(100,80,60,40),
+    ymin = -Inf, ymax = Inf, fill = rep(c("grey92", "grey97"), 2)
+  ) +
+  annotate(
+    "rect",
+    xmin = c(0), xmax = c(20),
+    ymin = -Inf, ymax = Inf, fill = rep(c("grey92"), 1)
+  )+
+  geom_hline(
+    aes(yintercept = org_unit), size = 0.05, color = "grey80"
+  ) +
+  geom_segment(
+    aes(x = `Penta 1 Coverage <1y`,
+        xend = `Penta 3 Coverage <1y`,
+        y = fct_reorder(org_unit,`Penta 1 Coverage <1y`) ,
+        yend = org_unit),
+    size = 1.2,
+    alpha = .8,
+    color = "lightgrey",
+    show.legend = TRUE)+
+  geom_point(aes(x = `Penta 1 Coverage <1y`), 
+             size = 2, color = penta_1_colour,
+             show.legend = TRUE, alpha = 0.8) +
+  geom_point(aes(x = `Penta 3 Coverage <1y`),
+             size = 2, color = penta_3_colour, 
+             show.legend = TRUE, 
+             alpha = 0.8)+
+  # scale_x_continuous()+
+  scale_x_reverse(limits = c(100, 0),
+                  breaks = c(100, 80, 60, 40, 20, 0),
+                  labels = c("100%", "80", "60", "40", "20", "0%"),
+                  expand = c(0, 0))+
+  geom_vline(xintercept = 80, linetype = "solid", size = .5, alpha = .8, color =  penta_1_colour)+
+  geom_text(aes(x = 82, y = "Bo"), label = "Penta 1 target", angle = 90, size = 2.5, color = penta_1_colour)+
+ 
+  geom_vline(xintercept = 60, color = penta_3_colour, linetype = "solid",  size = .5, alpha = .8)+
+  geom_text(aes(x = 62, y = "Bo"), label = "Penta 3 target", angle = 90, size = 2.5, color = penta_3_colour)+
+  
+  theme_bw()+
+  theme(
+    plot.title = element_textbox(family = font, size = 12, hjust = 0.1, color = "#28282B"),
+    plot.subtitle = element_blank(),
+    
+    #plot.caption = element_textbox_simple(family = font,  hjust = 0.9, size = 8, color = "#28282B"),
+    plot.caption = element_blank(),
+    
+    axis.title =  element_blank(),
+    axis.text =  element_text(size = 8, family = font, color = "#28282B"),
+    
+    legend.position = "top",
+    legend.text = element_text(size = 6, family = font, color = "#28282B"),
+    legend.title = element_text(size = 7, family = font, color = "#28282B", hjust = 0.5),
+    
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    
+    
+    axis.ticks.x = element_line(color = "#4a4e4d"),
+    text = element_text(color = "#4a4e4d"),
+    strip.text.y.left  = element_text(angle = 0),
+    panel.background = element_rect(fill = "#F2F2F2", color = "#F2F2F2"),
+    strip.background = element_rect(fill = "#F2F2F2", color = "#F2F2F2"),
+    strip.text = element_text(color = "#4a4e4d"),
+    plot.background = element_rect(fill = "#F2F2F2", color = "#F2F2F2"),
+    panel.spacing = unit(0, "lines")
+   # plot.margin = margin(0,0,0,0, "cm")
+    
+    
+  )+
+  geom_label_repel(aes(x = x_pos, label = `Dropout rate Penta 1 - 3`),
+                  color = "#4a4e4d",
+                  label.padding = unit(0.15, "lines"),
+                  label.r = unit(0.3, "lines"),
+                  box.padding = 0.3,
+                  min.segment.length = 0,
+                  size = 2, show.legend = FALSE,
+                  seed = 2023,
+                  arrow =  arrow(length = unit(0.008, "npc")))+
+  labs(title = glue(" A chart of **<span style= 'color:{penta_1_colour};'>Penta 1 <1y,</span>**
+                    **<span style= 'color:{penta_3_colour};'>Penta 3 <1y </span>** <br>
+                    Coverage and **Dropout rate** <br>"),
+    #   subtitle = "Districts in Sierra Leone, Annual data (2022)",
+       x = "Pecentages",
+       y = "Districts",
+       caption = caption
+       
+       )
+
+# ggsave(paste0("freight_elevators_", format(Sys.time(), "%d%m%Y"), ".png"), dpi = 320, width = 6, height = 6)
+  
+```
+
+You can put all your explanations here of the current period.
+
+These explanation can easily be made by Epidemiologist in MS word
+
+
+
+##  Data visualistaion using different periods
+
+
+```{r}
+Penta_1_last_year <- dhis2_play_connection$get_analytics(
+                                    analytic = c("i7WSgSJpnfu"),
+                                    org_unit = "ImspTQPwCqd",
+                                    period = "LAST_12_MONTHS",
+                                    output_scheme = "NAME")
+```
+
+
+```{r}
+Penta_1_2021 <- dhis2_play_connection$get_analytics(
+                                    analytic = c("i7WSgSJpnfu"),
+                                    org_unit = "ImspTQPwCqd",
+                                    period = as.character(202001:202012),
+                                    output_scheme = "NAME")
+
+
+```
+
+
+
+```{r}
+
+#| column: screen
+#| out-width: 100%
+#| fig-format: svg
+ gg <- rbind(Penta_1_2021, Penta_1_last_year) |> 
+  mutate(analytic = as.factor(analytic),
+         period = my(period),
+         year = as.factor(year(period)),
+         month = month(period,abbr = T, label = T),
+         value = as.numeric(value))
+
+ gg |> 
+  ggplot(aes(x = month, fill= year, group = year)) +
+  #geom_point(aes(y= value))+
+  stat_smooth(aes(y= value),
+              geom = 'area', method = 'loess',
+              span = 0.4,formula = 'y ~ x',
+              alpha = 0.9)+
+  stat_smooth(aes(y= value),
+              geom = 'line', method = 'loess', span = 0.4,
+              alpha = 0.8,formula = 'y ~ x',
+              color = "black")+
+  scale_fill_discrete(type =   RColorBrewer::brewer.pal(3, "Set2"))+
+  #scale_y_continuous(limits = c(0,NA))+
+  theme_bw()+
+  theme(
+    plot.title = element_textbox(family = font, size = 12, hjust = 0.1, color = "#28282B"),
+    plot.subtitle = element_blank(),
+    
+   # plot.caption = element_textbox_simple(family = font,  hjust = 0.9, size = 8, color = "#28282B"),
+    plot.caption = element_blank(),
+    
+    axis.title =  element_blank(),
+    axis.text =  element_text(size = 8, family = font, color = "#28282B"),
+    
+    legend.position = "top",legend.background = element_blank(),
+    legend.key.width  = unit(1,units = "mm"),
+    legend.key.height = unit(5,units = "mm"),
+    legend.text = element_text(size = 6, family = font, color = "#28282B"),
+    legend.title = element_text(size = 7, family = font, color = "#28282B", hjust = 0.5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.ticks.x = element_line(color = "#4a4e4d"),
+    text = element_text(color = "#4a4e4d"),
+    strip.text.y.left  = element_text(angle = 0),
+    panel.background = element_rect(fill = "#F2F2F2", color = "#F2F2F2"),
+    strip.background = element_rect(fill = "#F2F2F2", color = "#F2F2F2"),
+    strip.text = element_text(color = "#4a4e4d"),
+    plot.background = element_rect(fill = "#F2F2F2", color = "#F2F2F2"),
+    panel.spacing = unit(0, "lines")
+    # plot.margin = margin(0,0,0,0, "cm")
+  )+
+  labs(title = glue("A chart of **Penta 1** monthly coverage (%)"),
+       #   subtitle = "Districts in Sierra Leone, Annual data (2022)",
+       x = "Pecentages",
+       y = "Districts",
+       caption = "**Data source:** DHIS 2 Demo - Districts in Sierra Leone, Annual data (2022)"
+       
+  )
+
+
+```
+
+More explanations of the second plot
+
+## This number changes if the period changes
+
+```{r}
+gg_year1 <- gg |> 
+  filter(year == gg$year[1] ) 
+  
+```
+
+
+The year `r  gg_year1$year[1]` had an average of  `r round(mean(gg_year1$value, na.rm = T),2)`
+
+
